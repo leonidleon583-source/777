@@ -24,6 +24,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: false
 
       - name: Restore Debug Keystore
         run: |
@@ -32,10 +34,9 @@ jobs:
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore
           fi
           if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
-            echo "Generating debug.keystore..."
+            echo "Generating debug.keystore via keytool..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          # Also place a copy in app/ directory in case of module relative paths
           cp debug.keystore app/debug.keystore 2>/dev/null || true
           ls -la debug.keystore
 
@@ -43,6 +44,7 @@ jobs:
         run: |
           touch .env
           touch app/.env 2>/dev/null || true
+          touch secrets.properties 2>/dev/null || true
           mkdir -p app/src/debug
           cat << 'EOF' > app/google-services.json
           {
@@ -78,10 +80,11 @@ jobs:
           cp app/google-services.json app/src/debug/google-services.json
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --stacktrace --no-daemon
+        run: gradle assembleDebug --no-daemon --no-configuration-cache --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk

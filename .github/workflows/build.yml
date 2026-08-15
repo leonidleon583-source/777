@@ -21,25 +21,35 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
 
-      - name: Restore Debug Keystore
+      - name: Create .env and .env.example fallback
+        run: |
+          touch .env
+          if [ ! -f ".env.example" ]; then
+            touch .env.example
+          fi
+
+      - name: Restore or Create Debug Keystore
         run: |
           if [ -f "debug.keystore.base64" ]; then
             echo "Decoding debug.keystore from debug.keystore.base64..."
-            base64 -d debug.keystore.base64 > debug.keystore || base64 --decode debug.keystore.base64 > debug.keystore
-          else
-            echo "Generating debug.keystore..."
+            base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore
+          fi
+          if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
+            echo "Generating debug.keystore via keytool..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
+          ls -lh debug.keystore
 
-      - name: Generate fallback google-services.json if missing
+      - name: Generate fallback google-services.json
         run: |
-          if [ ! -f "app/google-services.json" ]; then
-            cat << 'EOF' > app/google-services.json
+          mkdir -p app/src/debug
+          cat << 'EOF' > app/google-services.json
           {
             "project_info": {
               "project_number": "1234567890",
@@ -70,19 +80,12 @@ jobs:
             "configuration_version": "1"
           }
           EOF
-          fi
+          cp app/google-services.json app/src/debug/google-services.json
 
-      - name: Ensure Gradle Wrapper exists
-        run: |
-          if [ ! -f "gradlew" ]; then
-            gradle wrapper
-          fi
-          chmod +x gradlew
+      - name: Build Debug APK with Gradle
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Upload Debug APK
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk

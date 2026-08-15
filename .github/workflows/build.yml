@@ -22,19 +22,19 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle
+      - name: Setup Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          cache-disabled: false
+          gradle-version: '9.3.1'
 
-      - name: Restore Debug Keystore
+      - name: Restore or Generate Debug Keystore
         run: |
           if [ -f "debug.keystore.base64" ]; then
             echo "Decoding debug.keystore from debug.keystore.base64..."
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore
           fi
           if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
-            echo "Generating debug.keystore via keytool..."
+            echo "Generating debug.keystore..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           cp debug.keystore app/debug.keystore 2>/dev/null || true
@@ -80,12 +80,26 @@ jobs:
           cp app/google-services.json app/src/debug/google-services.json
 
       - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon --no-configuration-cache --stacktrace
+        run: |
+          gradle assembleDebug --no-daemon --stacktrace
+          
+          mkdir -p output_apk
+          APK_FILE=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            APK_FILE=$(find . -name "*.apk" 2>/dev/null | head -n 1)
+          fi
+          
+          if [ -n "$APK_FILE" ]; then
+            echo "Found APK at: $APK_FILE"
+            cp "$APK_FILE" output_apk/app-debug.apk
+          else
+            echo "ERROR: APK file was not generated!"
+            exit 1
+          fi
 
-      - name: Upload Debug APK Artifact
+      - name: Upload Finished APK to Cloud
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: app-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: output_apk/app-debug.apk
           retention-days: 14

@@ -24,30 +24,25 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
 
-      - name: Create .env and .env.example fallback
-        run: |
-          touch .env
-          if [ ! -f ".env.example" ]; then
-            touch .env.example
-          fi
-
-      - name: Restore or Create Debug Keystore
+      - name: Restore Debug Keystore
         run: |
           if [ -f "debug.keystore.base64" ]; then
             echo "Decoding debug.keystore from debug.keystore.base64..."
             base64 -d debug.keystore.base64 > debug.keystore 2>/dev/null || base64 --decode debug.keystore.base64 > debug.keystore
           fi
           if [ ! -f "debug.keystore" ] || [ ! -s "debug.keystore" ]; then
-            echo "Generating debug.keystore via keytool..."
+            echo "Generating debug.keystore..."
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          ls -lh debug.keystore
+          # Also place a copy in app/ directory in case of module relative paths
+          cp debug.keystore app/debug.keystore 2>/dev/null || true
+          ls -la debug.keystore
 
-      - name: Generate fallback google-services.json
+      - name: Setup Environment Files
         run: |
+          touch .env
+          touch app/.env 2>/dev/null || true
           mkdir -p app/src/debug
           cat << 'EOF' > app/google-services.json
           {
@@ -82,7 +77,7 @@ jobs:
           EOF
           cp app/google-services.json app/src/debug/google-services.json
 
-      - name: Build Debug APK with Gradle
+      - name: Build Debug APK
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Upload Debug APK Artifact
